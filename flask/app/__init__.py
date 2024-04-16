@@ -2,7 +2,7 @@ import os
 from flask import Flask
 from flask import request, abort
 import app.image_processor as image_processor
-import cv2 as cv
+import numpy as np
 
 
 def create_app(test_config=None):
@@ -31,14 +31,15 @@ def create_app(test_config=None):
         file = request.files['image']
         if (file is None):
             abort(400, 'No file provided') 
-        print(file)
         bts = file.stream.read()
         decoded_image = image_processor.decode_base64_image(bts)
-        hsv_image = cv.cvtColor(decoded_image, cv.COLOR_RGB2HSV)
+        hsv_image = image_processor.rgb2hsv2(decoded_image)
         hsv_image[:, :, 2] = image_processor.equalize_hsv_intensity_histogram(hsv_image)
-        rgb_image = cv.cvtColor(hsv_image, cv.COLOR_HSV2RGB)
+        rgb_image = image_processor.hsv2rgb2(hsv_image)
+        encoded_image = image_processor.encode_image_base64(rgb_image)
+        print(rgb_image.shape)
         return {
-            'image': image_processor.encode_image_base64(rgb_image)
+            'image': encoded_image
         }
         
 
