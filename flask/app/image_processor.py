@@ -2,17 +2,14 @@ import base64
 import numpy as np
 import imageio.v3 as iio
 import io
-import colorsys
+from typing import Callable, Literal
 
 def decode_base64_image(base64_image : str) -> np.ndarray:
-    #base64_image = base64.b64decode(base64_image)
     base64_image = io.BytesIO(base64_image)
     decoded_image = iio.imread(base64_image)
     return decoded_image
 
 def encode_image_base64(image : np.ndarray) -> bytes:
-    print(image.shape)
-    print(np.max(image[:,:,0]))
     image = image.astype(np.uint8)
     written_image = iio.imwrite(uri='<bytes>', image=image, extension='.jpg')
     base64_bytes = base64.b64encode(written_image)
@@ -24,7 +21,7 @@ def equalize_hsv_intensity_histogram(hsv_image : np.ndarray) -> np.ndarray:
     # Equalize the intensity histogram of the HSI image
     brightness_value = hsv_image[:, :, 2]
     # Calculate the histogram of the intensity channel
-    histogram, _ = np.histogram(brightness_value, bins=256, range=(0, 255))
+    histogram, _ = np.histogram(brightness_value, bins=256)
     
     def calc_cdf(histogram):
         cdf = np.zeros(histogram.size)
@@ -39,6 +36,42 @@ def equalize_hsv_intensity_histogram(hsv_image : np.ndarray) -> np.ndarray:
     # Map the intensity values to the new values
     new_intensity = np.floor(cdf[brightness_value.astype(int)] * 255).astype(int)
     return new_intensity
+
+def median_filter(
+        mask_area: np.ndarray,
+):
+    return np.median(mask_area).astype(int)
+
+def process_with_mask(
+        layer: np.ndarray,
+        mask_width: int,
+        mask_height: int,
+        corner_handling: Literal['fit', 'resize', 'substituteMin', 'substituteMax'],
+        # filter: Callable[[np.ndarray], int]
+        ) -> np.ndarray:
+    print(layer.shape)
+    shaped_layer = layer
+
+    mask_width_half = np.floor(mask_width/2).astype(int)
+    mask_height_half = np.floor(mask_height/2).astype(int)
+    match corner_handling:
+        case 'substituteMin':
+            shaped_layer = np.pad(layer,pad_width=((mask_height_half,mask_height_half), (mask_width_half,mask_width_half)),mode='constant', constant_values=0)
+        case 'substituteMax':
+            shaped_layer = np.pad(layer,pad_width=((mask_height_half,mask_height_half), (mask_width_half,mask_width_half)),mode='constant', constant_values=255)
+    print(shaped_layer)
+    print(mask_width_half)
+    print(mask_height_half)
+    for i in range(mask_width_half+1, shaped_layer.shape[0] - mask_width_half):
+        for j in range(mask_height_half+1, shaped_layer.shape[1] - mask_height_half):
+            mask_area = shaped_layer[
+                i-mask_width_half: i+mask_width_half,
+                i-mask_height_half: i+mask_height_half,
+            ]
+            print(mask_area)
+            print(i,j)
+    filtered_layer = median_filter()
+    return 'test succcesful'
 
 def _prepare_colorarray(arr : np.ndarray, channel_axis=-1):
     """NOTE: This is a slightly modified version of _prepare_colorarray from scikit-image (https://github.com/scikit-image/scikit-image/blob/v0.23.1/skimage/color/colorconv.py)
@@ -56,7 +89,7 @@ def _prepare_colorarray(arr : np.ndarray, channel_axis=-1):
     float_arr = arr.astype(float)
     return float_arr;
 
-def rgb2hsv2(rgb):
+def rgb2hsv(rgb):
     """ NOTE: This is a slightly modified version of scikit-image rgb2hsv(https://scikit-image.org/docs/stable/api/skimage.color.html#skimage.color.rgb2hsv)
     RGB to HSV color space conversion.
 
@@ -139,7 +172,7 @@ def rgb2hsv2(rgb):
 
     return out
 
-def hsv2rgb2(hsv):
+def hsv2rgb(hsv):
     """NOTE: This is a slightly modified version of scikit-image hsv2rgb(https://scikit-image.org/docs/stable/api/skimage.color.html#skimage.color.hsv2rgb)
     HSV to RGB color space conversion.
 
@@ -200,7 +233,7 @@ def hsv2rgb2(hsv):
     )
 
     return out
-
+'''
 def rgb2hsv(image: np.ndarray, *, channel_axis=-1):
     hsv_image = np.empty_like(image)
     rgb_image = _prepare_colorarray(image)
@@ -225,3 +258,4 @@ def hsv2rgb(hsv_image: np.ndarray, *, channel_axis=-1):
             rgb_image[row, column, 1] = green
             rgb_image[row, column, 2] = blue
     return rgb_image * 255;
+'''

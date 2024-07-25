@@ -26,6 +26,10 @@ def create_app(test_config=None):
     except OSError:
         pass
 
+    @app.get('/test')
+    def test():
+        image_processor.process_with_mask(np.ones((5,5)),5,5,'substituteMin')
+        return 'test'
     @app.post('/equalize-histogram')
     def equalize_histogram():
         file = request.files['image']
@@ -33,9 +37,9 @@ def create_app(test_config=None):
             abort(400, 'No file provided') 
         bts = file.stream.read()
         decoded_image = image_processor.decode_base64_image(bts)
-        hsv_image = image_processor.rgb2hsv2(decoded_image)
+        hsv_image = image_processor.rgb2hsv(decoded_image)
         hsv_image[:, :, 2] = image_processor.equalize_hsv_intensity_histogram(hsv_image)
-        rgb_image = image_processor.hsv2rgb2(hsv_image)
+        rgb_image = image_processor.hsv2rgb(hsv_image)
         encoded_image = image_processor.encode_image_base64(rgb_image)
         print(rgb_image.shape)
         return {
