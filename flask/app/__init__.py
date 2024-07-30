@@ -1,6 +1,7 @@
 import os
 from flask import Flask
-from flask import request, abort
+from flask import request, abort, json
+from werkzeug.exceptions import HTTPException
 import app.image_processor as image_processor
 import numpy as np
 
@@ -26,10 +27,51 @@ def create_app(test_config=None):
     except OSError:
         pass
 
-    @app.get('/test')
-    def test():
-        image_processor.process_with_mask(np.ones((5,5)),5,5,'substituteMin')
-        return 'test'
+    @app.errorhandler(Exception)
+    def handle_exception(e : Exception):
+        # pass through HTTP errors
+        if isinstance(e, HTTPException):
+            return e
+
+        response = e.get_response()
+        # replace the body with JSON
+        response.data = json.dumps({
+            "code": e.code,
+            "name": e.name,
+            "description": e.description,
+        })
+        response.content_type = "application/json"
+        return response
+
+    @app.errorhandler(HTTPException)
+    def handle_http_exception(e : HTTPException):
+        """Return JSON instead of HTML for HTTP errors."""
+        # start with the correct headers and status code from the error
+        response = e.get_response()
+        # replace the body with JSON
+        response.data = json.dumps({
+            "code": e.code,
+            "name": e.name,
+            "description": e.description,
+        })
+        response.content_type = "application/json"
+        return response
+
+    @app.post('/filter-mask')
+    def filter_mask():
+        file = request.files['image']
+        if (file is None):
+            abort(400, 'No file provided') 
+        bts = file.stream.read()
+        decoded_image = image_processor.decode_base64_image(bts)
+        hsv_image = image_processor.rgb2hsv(decoded_image)
+        hsv_image[:, :, 2] = image_processor.process_with_mask(hsv_image[:, :, 2],3,3,'substituteMin',image_processor.median_filter)
+        rgb_image = image_processor.hsv2rgb(hsv_image)
+        encoded_image = image_processor.encode_image_base64(rgb_image)
+        print(rgb_image .shape)
+        return {
+            'image': encoded_image
+        }
     @app.post('/equalize-histogram')
     def equalize_histogram():
         file = request.files['image']

@@ -3,6 +3,7 @@ import numpy as np
 import imageio.v3 as iio
 import io
 from typing import Callable, Literal
+from werkzeug.exceptions import HTTPException
 
 def decode_base64_image(base64_image : str) -> np.ndarray:
     base64_image = io.BytesIO(base64_image)
@@ -42,36 +43,88 @@ def median_filter(
 ):
     return np.median(mask_area).astype(int)
 
+def mean_filter(
+        mask_area: np.ndarray,
+):
+    return np.mean(mask_area).astype(int)
+
 def process_with_mask(
         layer: np.ndarray,
         mask_width: int,
         mask_height: int,
         corner_handling: Literal['fit', 'resize', 'substituteMin', 'substituteMax'],
-        # filter: Callable[[np.ndarray], int]
+        filter: Callable[[np.ndarray], int]
         ) -> np.ndarray:
-    print(layer.shape)
+    """Process image layer with a mask filter of size M x N
+
+    Parameters
+    -------
+    layer: the provided image layer (should be 2-dimensional larger than 10x10 layer)
+    mask_width: width of the mask (should be 3 or bigger)
+    mask_height: height of the mask (should be 3 or bigger)
+    corner_handling: specifies the way corners should be handled with the filter
+        'fit': the filter only uses the pixels that are available in given space (doesn't exceed boundaries)
+        'resize': the filter only processes pixels where it fits completely (meaning layer will be smaller)
+        'substituteMin': layer is padded with zeros so that the mask filter can process all original pixels
+        'substituteMax': layer is padded with the max value of the layer so that the mask filter can process all original pixels
+
+    Returns
+    -------
+    layer : (..., ...) ndarray
+        The image layer as ndarray
+    """
+    if mask_width < 3 or mask_height < 3:
+        raise HTTPException('Mask dimensions should be integers 3 or higher', 400)
+    if mask_width % 2 != 1 or mask_height % 2 != 1:
+        raise HTTPException('Mask dimensions should be odd integers', 400)
+    if layer.shape < (10,10):
+        raise HTTPException('Layer/image size should be 10x10 or greater', 400)
     shaped_layer = layer
 
     mask_width_half = np.floor(mask_width/2).astype(int)
     mask_height_half = np.floor(mask_height/2).astype(int)
+    
     match corner_handling:
+        case 'fit':
+            for y in range(0, shaped_layer.shape[0]):
+                for x in range(0, shaped_layer.shape[1]):
+                    y_mask_start =  y-mask_height_half if y-mask_height_half >= 0 else 0
+                    y_mask_end = y+mask_height_half if y+mask_height_half <= shaped_layer.shape[0] else shaped_layer.shape[0]
+                    
+                    x_mask_start = x-mask_height_half if x-mask_height_half >= 0 else 0
+                    x_mask_end = x+mask_height_half if x+mask_height_half <= shaped_layer.shape[1] else shaped_layer.shape[1]
+
+                    mask_area = shaped_layer[
+                       y_mask_start : y_mask_end,
+                       x_mask_start : x_mask_end
+                    ]
+                    filtered_layer = filter(mask_area)
+                    layer[y, x] = filtered_layer
+        case 'resize':
+            for y in range(mask_height_half, shaped_layer.shape[0] - mask_height_half):
+                for x in range(mask_width_half, shaped_layer.shape[1] - mask_width_half):
+                    mask_area = shaped_layer[
+                        y-mask_height_half: y+mask_height_half+1,
+                        x-mask_width_half: x+mask_width_half+1,
+                        ]
+                    filtered_layer = filter(mask_area)
+                    layer[y-mask_height_half,x-mask_width_half] = filtered_layer  
         case 'substituteMin':
             shaped_layer = np.pad(layer,pad_width=((mask_height_half,mask_height_half), (mask_width_half,mask_width_half)),mode='constant', constant_values=0)
         case 'substituteMax':
-            shaped_layer = np.pad(layer,pad_width=((mask_height_half,mask_height_half), (mask_width_half,mask_width_half)),mode='constant', constant_values=255)
-    print(shaped_layer)
-    print(mask_width_half)
-    print(mask_height_half)
-    for i in range(mask_width_half+1, shaped_layer.shape[0] - mask_width_half):
-        for j in range(mask_height_half+1, shaped_layer.shape[1] - mask_height_half):
-            mask_area = shaped_layer[
-                i-mask_width_half: i+mask_width_half,
-                i-mask_height_half: i+mask_height_half,
-            ]
-            print(mask_area)
-            print(i,j)
-    filtered_layer = median_filter()
-    return 'test succcesful'
+            maxValue = np.max(layer)
+            shaped_layer = np.pad(layer,pad_width=((mask_height_half,mask_height_half), (mask_width_half,mask_width_half)),mode='constant', constant_values=maxValue)
+    
+    if corner_handling == 'substituteMax' or corner_handling == 'substituteMin':
+        for y in range(mask_height_half, shaped_layer.shape[0] - mask_height_half):
+            for x in range(mask_width_half, shaped_layer.shape[1] - mask_width_half):
+                mask_area = shaped_layer[
+                    y-mask_height_half: y+mask_height_half+1,
+                    x-mask_width_half: x+mask_width_half+1,
+                ]
+                filtered_layer = filter(mask_area)
+                layer[y-mask_height_half,x-mask_width_half] = filtered_layer  
+    return layer
 
 def _prepare_colorarray(arr : np.ndarray, channel_axis=-1):
     """NOTE: This is a slightly modified version of _prepare_colorarray from scikit-image (https://github.com/scikit-image/scikit-image/blob/v0.23.1/skimage/color/colorconv.py)
