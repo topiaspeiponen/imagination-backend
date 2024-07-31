@@ -45,30 +45,56 @@ def create_app(test_config=None):
     @app.errorhandler(HTTPException)
     def handle_http_exception(e : HTTPException):
         response = e.get_response()
+        print(e)
         response.data = json.dumps({
             "code": e.code,
             "name": e.name,
             "description": e.description,
         })
         response.content_type = "application/json"
+        response.status = e.code
         return response
 
     @app.post('/filter-mask')
     def filter_mask():
         file = request.files['image']
+        form = request.form
+        mask_width = int(form.get('mask_width'))
+        mask_height = int(form.get('mask_height'))
+        corner_handling_mode = form.get('corner_handling')
+        print(form)
         if (file is None):
-            abort(400, 'No file provided') 
+            abort(400, 'No file provided')
+        if mask_width is None:
+            abort(400, 'No mask width was provided')
+        if mask_height is None:
+            abort(400, 'No mask height was provided')
+        if corner_handling_mode is None or isinstance(corner_handling_mode, str) is False:
+            abort(400, 'Corner handling mode was not provided or was incorrect')
         bts = file.stream.read()
         decoded_image = image_processor.decode_base64_image(bts)
         hsv_image = image_processor.rgb2hsv(decoded_image)
-        hsv_image[:, :, 2] = image_processor.process_with_mask(hsv_image[:, :, 2],3,3,'substituteMin',image_processor.median_filter)
+        processed_layer = image_processor.process_with_mask(
+            hsv_image[:, :, 2],
+            mask_width,
+            mask_height,
+            corner_handling_mode,
+            image_processor.median_filter)
+        if len(processed_layer) < (len(hsv_image[:, :, 2][0]), len(hsv_image[:, :, 2][1])):
+            mask_width_half = np.floor(mask_width/2).astype(int)
+            mask_height_half = np.floor(mask_height/2).astype(int)
+            
+            resized_hsv_image = hsv_image[
+                mask_height_half:-mask_height_half, mask_width_half:-mask_width_half, :
+            ]
+            resized_hsv_image[:,:,2] = processed_layer
         rgb_image = image_processor.hsv2rgb(hsv_image)
         encoded_image = image_processor.encode_image_base64(rgb_image)
         print(rgb_image .shape)
         return {
             'image': encoded_image
         }
-    @app.post('/equalize-histogram')
+    @app.post('/histogram-equalization')
     def equalize_histogram():
         file = request.files['image']
         if (file is None):

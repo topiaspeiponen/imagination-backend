@@ -2,8 +2,10 @@ import base64
 import numpy as np
 import imageio.v3 as iio
 import io
-from typing import Callable, Literal
-from werkzeug.exceptions import HTTPException
+from typing import Callable
+from flask import abort
+
+allowed_corner_handling_types = ['fit', 'resize', 'substituteMin', 'substituteMax']
 
 def decode_base64_image(base64_image : str) -> np.ndarray:
     base64_image = io.BytesIO(base64_image)
@@ -52,21 +54,21 @@ def process_with_mask(
         layer: np.ndarray,
         mask_width: int,
         mask_height: int,
-        corner_handling: Literal['fit', 'resize', 'substituteMin', 'substituteMax'],
+        corner_handling: str,
         filter: Callable[[np.ndarray], int]
         ) -> np.ndarray:
     """Process image layer with a mask filter of size M x N
 
     Parameters
     -------
-    layer: the provided image layer (should be 2-dimensional larger than 10x10 layer)
-    mask_width: width of the mask (should be 3 or bigger)
-    mask_height: height of the mask (should be 3 or bigger)
-    corner_handling: specifies the way corners should be handled with the filter
-        'fit': the filter only uses the pixels that are available in given space (doesn't exceed boundaries)
-        'resize': the filter only processes pixels where it fits completely (meaning layer will be smaller)
-        'substituteMin': layer is padded with zeros so that the mask filter can process all original pixels
-        'substituteMax': layer is padded with the max value of the layer so that the mask filter can process all original pixels
+    layer : the provided image layer (should be 2-dimensional larger than 10x10 layer)
+    mask_width : width of the mask (should be 3 or bigger odd integer)
+    mask_height : height of the mask (should be 3 or bigger odd integer)
+    corner_handling : specifies the way corners should be handled with the filter
+        - 'fit': the filter only uses the pixels that are available in given space (doesn't exceed boundaries)
+        - 'resize': the filter only processes pixels where it fits completely (meaning layer will be smaller)
+        - 'substituteMin': layer is padded with zeros so that the mask filter can process all original pixels
+        - 'substituteMax': layer is padded with the max value of the layer so that the mask filter can process all original pixels
 
     Returns
     -------
@@ -74,11 +76,13 @@ def process_with_mask(
         The image layer as ndarray
     """
     if mask_width < 3 or mask_height < 3:
-        raise HTTPException('Mask dimensions should be integers 3 or higher', 400)
+        abort(400,'Mask dimensions should be integers 3 or higher')
     if mask_width % 2 != 1 or mask_height % 2 != 1:
-        raise HTTPException('Mask dimensions should be odd integers', 400)
+        abort(400, 'Mask dimensions should be odd integers')
     if layer.shape < (10,10):
-        raise HTTPException('Layer/image size should be 10x10 or greater', 400)
+        abort(400,'Layer/image size should be 10x10 or greater')
+    if corner_handling not in allowed_corner_handling_types:
+        abort(400, 'Corner handling type is not one of the allowed values')
     shaped_layer = layer
 
     mask_width_half = np.floor(mask_width/2).astype(int)
@@ -89,11 +93,13 @@ def process_with_mask(
             for y in range(0, shaped_layer.shape[0]):
                 for x in range(0, shaped_layer.shape[1]):
                     y_mask_start =  y-mask_height_half if y-mask_height_half >= 0 else 0
-                    y_mask_end = y+mask_height_half if y+mask_height_half <= shaped_layer.shape[0] else shaped_layer.shape[0]
+                    y_mask_end = y+mask_height_half if y+mask_height_half <= shaped_layer.shape[0]-1 else shaped_layer.shape[0]-1
                     
                     x_mask_start = x-mask_height_half if x-mask_height_half >= 0 else 0
-                    x_mask_end = x+mask_height_half if x+mask_height_half <= shaped_layer.shape[1] else shaped_layer.shape[1]
+                    x_mask_end = x+mask_height_half if x+mask_height_half <= shaped_layer.shape[1]-1 else shaped_layer.shape[1]-1
+                    print('y start', y_mask_start, ', y end', y_mask_end)
 
+                    print('x start', x_mask_start, ', x end', x_mask_end)
                     mask_area = shaped_layer[
                        y_mask_start : y_mask_end,
                        x_mask_start : x_mask_end
@@ -109,6 +115,8 @@ def process_with_mask(
                         ]
                     filtered_layer = filter(mask_area)
                     layer[y-mask_height_half,x-mask_width_half] = filtered_layer  
+            resized_layer = layer[mask_height_half:-mask_height_half, mask_width_half:-mask_width_half]
+            return resized_layer
         case 'substituteMin':
             shaped_layer = np.pad(layer,pad_width=((mask_height_half,mask_height_half), (mask_width_half,mask_width_half)),mode='constant', constant_values=0)
         case 'substituteMax':
@@ -286,29 +294,3 @@ def hsv2rgb(hsv):
     )
 
     return out
-'''
-def rgb2hsv(image: np.ndarray, *, channel_axis=-1):
-    hsv_image = np.empty_like(image)
-    rgb_image = _prepare_colorarray(image)
-    rgb_image = rgb_image / 255
-    for row in range(rgb_image.shape[0]):
-        for column in range(rgb_image.shape[1]):
-            red, green, blue = rgb_image[row, column]
-            [hue, saturation, value] = colorsys.rgb_to_hsv(red, green, blue)
-            print(hue, saturation, value)
-            hsv_image[row, column, 0] = hue
-            hsv_image[row, column, 1] = saturation
-            hsv_image[row, column, 2] = value
-    return hsv_image;
-
-def hsv2rgb(hsv_image: np.ndarray, *, channel_axis=-1):
-    rgb_image = np.empty_like(hsv_image)
-    for row in range(hsv_image.shape[0]):
-        for column in range(hsv_image.shape[1]):
-            hue, saturation, value = hsv_image[row, column]
-            [red, green, blue] = colorsys.hsv_to_rgb(hue, saturation, value)
-            rgb_image[row, column, 0] = red
-            rgb_image[row, column, 1] = green
-            rgb_image[row, column, 2] = blue
-    return rgb_image * 255;
-'''
