@@ -92,14 +92,12 @@ def process_with_mask(
         case 'fit':
             for y in range(0, shaped_layer.shape[0]):
                 for x in range(0, shaped_layer.shape[1]):
-                    y_mask_start =  y-mask_height_half if y-mask_height_half >= 0 else 0
-                    y_mask_end = y+mask_height_half if y+mask_height_half <= shaped_layer.shape[0]-1 else shaped_layer.shape[0]-1
+                    y_mask_start = max(y - mask_height_half, 0)
+                    y_mask_end = min(y + mask_height_half + 1, shaped_layer.shape[0])
                     
-                    x_mask_start = x-mask_height_half if x-mask_height_half >= 0 else 0
-                    x_mask_end = x+mask_height_half if x+mask_height_half <= shaped_layer.shape[1]-1 else shaped_layer.shape[1]-1
-                    print('y start', y_mask_start, ', y end', y_mask_end)
-
-                    print('x start', x_mask_start, ', x end', x_mask_end)
+                    x_mask_start = max(x - mask_width_half, 0)
+                    x_mask_end = min(x + mask_width_half + 1, shaped_layer.shape[1])
+        
                     mask_area = shaped_layer[
                        y_mask_start : y_mask_end,
                        x_mask_start : x_mask_end

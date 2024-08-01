@@ -80,7 +80,7 @@ def create_app(test_config=None):
             mask_height,
             corner_handling_mode,
             image_processor.median_filter)
-        if len(processed_layer) < (len(hsv_image[:, :, 2][0]), len(hsv_image[:, :, 2][1])):
+        if len(processed_layer) < len(hsv_image[:, :, 2][1]) or len(processed_layer) < len(hsv_image[:, :, 2][0]):
             mask_width_half = np.floor(mask_width/2).astype(int)
             mask_height_half = np.floor(mask_height/2).astype(int)
             
@@ -88,6 +88,9 @@ def create_app(test_config=None):
                 mask_height_half:-mask_height_half, mask_width_half:-mask_width_half, :
             ]
             resized_hsv_image[:,:,2] = processed_layer
+            hsv_image = resized_hsv_image
+        else:
+            hsv_image[:,:,2] = processed_layer
         rgb_image = image_processor.hsv2rgb(hsv_image)
         encoded_image = image_processor.encode_image_base64(rgb_image)
         print(rgb_image .shape)
