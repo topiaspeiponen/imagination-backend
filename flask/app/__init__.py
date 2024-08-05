@@ -62,7 +62,8 @@ def create_app(test_config=None):
         mask_width = int(form.get('mask_width'))
         mask_height = int(form.get('mask_height'))
         corner_handling_mode = form.get('corner_handling')
-        print(form)
+        filter_type = form.get('filter_type')
+
         if (file is None):
             abort(400, 'No file provided')
         if mask_width is None:
@@ -71,15 +72,25 @@ def create_app(test_config=None):
             abort(400, 'No mask height was provided')
         if corner_handling_mode is None or isinstance(corner_handling_mode, str) is False:
             abort(400, 'Corner handling mode was not provided or was incorrect')
+        if filter_type is None or filter_type not in image_processor.allowed_filter_types:
+            abort(400, 'No filter type was provided or was incorrect')
         bts = file.stream.read()
         decoded_image = image_processor.decode_base64_image(bts)
         hsv_image = image_processor.rgb2hsv(decoded_image)
+
+        filter_func = image_processor.median_filter
+        match filter_type:
+            case 'mean':
+                filter_func = image_processor.mean_filter
+            case 'median':
+                filter_func = image_processor.median_filter
+
         processed_layer = image_processor.process_with_mask(
             hsv_image[:, :, 2],
             mask_width,
             mask_height,
             corner_handling_mode,
-            image_processor.median_filter)
+            filter_func)
         if len(processed_layer) < len(hsv_image[:, :, 2][1]) or len(processed_layer) < len(hsv_image[:, :, 2][0]):
             mask_width_half = np.floor(mask_width/2).astype(int)
             mask_height_half = np.floor(mask_height/2).astype(int)
@@ -108,7 +119,6 @@ def create_app(test_config=None):
         hsv_image[:, :, 2] = image_processor.equalize_hsv_intensity_histogram(hsv_image)
         rgb_image = image_processor.hsv2rgb(hsv_image)
         encoded_image = image_processor.encode_image_base64(rgb_image)
-        print(rgb_image.shape)
         return {
             'image': encoded_image
         }

@@ -6,6 +6,7 @@ from typing import Callable
 from flask import abort
 
 allowed_corner_handling_types = ['fit', 'resize', 'substituteMin', 'substituteMax']
+allowed_filter_types = ['median', 'mean']
 
 def decode_base64_image(base64_image : str) -> np.ndarray:
     base64_image = io.BytesIO(base64_image)
