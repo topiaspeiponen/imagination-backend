@@ -2,30 +2,31 @@ import os
 from flask import Flask
 from flask import request, abort, json
 from werkzeug.exceptions import HTTPException
-import app.image_processor as image_processor
+from app.image_processor import allowed_filter_types, decode_base64_image, rgb2hsv, median_filter, mean_filter, process_with_mask, hsv2rgb, encode_image_base64, equalize_hsv_intensity_histogram
 import numpy as np
+import json
 
-
-def create_app(test_config=None):
+def create_app():
     # create and configure the app
     app = Flask(__name__, instance_relative_config=True)
     app.config.from_mapping(
-        SECRET_KEY='dev',
         DATABASE=os.path.join(app.instance_path, 'flaskr.sqlite'),
     )
-
-    if test_config is None:
-        # load the instance config, if it exists, when not testing
-        app.config.from_pyfile('config.py', silent=True)
-    else:
-        # load the test config if passed in
-        app.config.from_mapping(test_config)
+    app.config.from_file('config.json', load=json.load)
 
     # ensure the instance folder exists
     try:
         os.makedirs(app.instance_path)
     except OSError:
         pass
+
+    @app.before_request
+    def authenticate():
+        print('before req ', request.headers)
+        secret_key = app.config["SECRET_KEY"]
+        xapikey = request.headers.get("X-Api-Key")
+        if (secret_key != xapikey):
+            abort(403)
 
     @app.errorhandler(Exception)
     def handle_exception(e : Exception):
@@ -54,6 +55,10 @@ def create_app(test_config=None):
         response.content_type = "application/json"
         response.status = e.code
         return response
+    
+    @app.get('/flask-health-check')
+    def health_check():
+        return 'success!'
 
     @app.post('/filter-mask')
     def filter_mask():
@@ -72,26 +77,26 @@ def create_app(test_config=None):
             abort(400, 'No mask height was provided')
         if corner_handling_mode is None or isinstance(corner_handling_mode, str) is False:
             abort(400, 'Corner handling mode was not provided or was incorrect')
-        if filter_type is None or filter_type not in image_processor.allowed_filter_types:
+        if filter_type is None or filter_type not in allowed_filter_types:
             abort(400, 'No filter type was provided or was incorrect')
         bts = file.stream.read()
-        decoded_image = image_processor.decode_base64_image(bts)
-        hsv_image = image_processor.rgb2hsv(decoded_image)
+        decoded_image = decode_base64_image(bts)
+        hsv_image = rgb2hsv(decoded_image)
 
-        filter_func = image_processor.median_filter
+        filter_func = median_filter
         match filter_type:
             case 'mean':
-                filter_func = image_processor.mean_filter
+                filter_func = mean_filter
             case 'median':
-                filter_func = image_processor.median_filter
+                filter_func = median_filter
 
-        processed_layer = image_processor.process_with_mask(
+        processed_layer = process_with_mask(
             hsv_image[:, :, 2],
             mask_width,
             mask_height,
             corner_handling_mode,
             filter_func)
-        if len(processed_layer) < len(hsv_image[:, :, 2][1]) or len(processed_layer) < len(hsv_image[:, :, 2][0]):
+        if processed_layer.shape[1] < hsv_image[:, :, 2].shape[1] or processed_layer.shape[0] < hsv_image[:, :, 2].shape[0]:
             mask_width_half = np.floor(mask_width/2).astype(int)
             mask_height_half = np.floor(mask_height/2).astype(int)
             
@@ -102,8 +107,8 @@ def create_app(test_config=None):
             hsv_image = resized_hsv_image
         else:
             hsv_image[:,:,2] = processed_layer
-        rgb_image = image_processor.hsv2rgb(hsv_image)
-        encoded_image = image_processor.encode_image_base64(rgb_image)
+        rgb_image = hsv2rgb(hsv_image)
+        encoded_image = encode_image_base64(rgb_image)
         print(rgb_image .shape)
         return {
             'image': encoded_image
@@ -114,11 +119,11 @@ def create_app(test_config=None):
         if (file is None):
             abort(400, 'No file provided') 
         bts = file.stream.read()
-        decoded_image = image_processor.decode_base64_image(bts)
-        hsv_image = image_processor.rgb2hsv(decoded_image)
-        hsv_image[:, :, 2] = image_processor.equalize_hsv_intensity_histogram(hsv_image)
-        rgb_image = image_processor.hsv2rgb(hsv_image)
-        encoded_image = image_processor.encode_image_base64(rgb_image)
+        decoded_image = decode_base64_image(bts)
+        hsv_image = rgb2hsv(decoded_image)
+        hsv_image[:, :, 2] = equalize_hsv_intensity_histogram(hsv_image)
+        rgb_image = hsv2rgb(hsv_image)
+        encoded_image = encode_image_base64(rgb_image)
         return {
             'image': encoded_image
         }

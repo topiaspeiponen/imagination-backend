@@ -1,4 +1,4 @@
-FROM python:3.11-alpine
+FROM python:3.12-alpine
 
 # upgrade pip
 RUN pip install --upgrade pip setuptools wheel
@@ -21,15 +21,15 @@ USER nonroot
 COPY --chown=nonroot:nonroot . .
 
 # venv
-ENV VIRTUAL_ENV=/home/app/venv
+ENV VIRTUAL_ENV=/home/app/.venv
 
 # python setup
 RUN python -m venv $VIRTUAL_ENV
 ENV PATH="$VIRTUAL_ENV/bin:$PATH"
-RUN export FLASK_APP=app.py
+RUN export FLASK_APP=app/__init__.py
 RUN pip3 install -r requirements.txt
 
 # define the port number the container should expose
-EXPOSE 5000
+EXPOSE 8000
 
 CMD ["python", "app/__init__.py"]
