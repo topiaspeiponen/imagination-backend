@@ -2,7 +2,7 @@ import os
 from flask import Flask
 from flask import request, abort, json
 from werkzeug.exceptions import HTTPException
-from app.image_processor import allowed_filter_types, decode_base64_image, rgb2hsv, median_filter, mean_filter, process_with_mask, hsv2rgb, encode_image_base64, equalize_hsv_intensity_histogram
+from imagination.image_processor import allowed_filter_types, decode_base64_image, rgb2hsv, median_filter, mean_filter, process_with_mask, hsv2rgb, encode_image_base64, equalize_hsv_intensity_histogram
 import numpy as np
 import json
 

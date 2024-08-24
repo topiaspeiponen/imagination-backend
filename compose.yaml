@@ -2,10 +2,8 @@ services:
   nginx-proxy:
     build: nginx
     restart: always
-    volumes:
-      - ./nginx/default.conf:/tmp/default.conf
     environment: 
-      - FLASK_SERVER_ADDR=flask-app:8000
+      - FLASK_SERVER_ADDR=$FLASK_SERVER_ADDR
     ports:
       - "80:80"
     depends_on:
@@ -15,7 +13,6 @@ services:
       interval: 60s
       timeout: 10s
       retries: 3
-    command: /app/start.sh
   flask-app:
     build: flask
     restart: always
@@ -26,4 +23,3 @@ services:
       interval: 60s
       timeout: 10s
       retries: 3
-    command: gunicorn -w 3 -t 60 -b 0.0.0.0:8000 'app:create_app()' --chdir app

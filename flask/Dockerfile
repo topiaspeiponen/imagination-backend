@@ -32,4 +32,4 @@ RUN pip3 install -r requirements.txt
 # define the port number the container should expose
 EXPOSE 8000
 
-CMD ["python", "app/__init__.py"]
+CMD gunicorn -w 3 -t 60 -b 0.0.0.0:8000 'imagination:create_app()' --chdir imagination
