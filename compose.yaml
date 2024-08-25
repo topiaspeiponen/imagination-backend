@@ -2,12 +2,6 @@ services:
   nginx-proxy:
     build: nginx
     restart: always
-    environment: 
-      - FLASK_SERVER_ADDR=$FLASK_SERVER_ADDR
-    ports:
-      - "80:80"
-    depends_on:
-      - flask-app
     healthcheck:
       test: ["CMD-SHELL", "curl --silent --fail localhost:80/health-check || exit 1"]
       interval: 60s
