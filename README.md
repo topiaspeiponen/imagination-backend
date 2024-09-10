@@ -2,6 +2,8 @@
 
 This repository contains the back-end server for the Imagination app. This project was created with [Flask](https://flask.palletsprojects.com/en/3.0.x/) and uses a NGINX reverse proxy along with Docker.
 
+The frontend for this app can be seen at https://github.com/topiaspeiponen/imagination-ui
+
 ### Local development with only Flask server running
 
 **Requirements**
