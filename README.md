@@ -21,7 +21,7 @@ The frontend for this app can be seen at https://github.com/topiaspeiponen/imagi
 4. In ```flask/app``` directory create new folder ```instance``` and copy the ```config.example.json``` file into it. Replace the example values with your own.
 
 5. Run the Flask app in debug mode on port 8000. You don't have to use port 8000 but for parity with the Docker setup it is used here.
-```flask --app flask/app run --port=8000 --debug```
+```flask --app flask/imagination run --port=8000 --debug```
 
 ### Build with Flask, NGINX and Docker
 
