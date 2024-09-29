@@ -2,7 +2,7 @@ import os
 from flask import Flask
 from flask import request, abort, json
 from werkzeug.exceptions import HTTPException
-from imagination.image_processor import allowed_filter_types, decode_base64_image, rgb2hsv, median_filter, mean_filter, process_with_mask, hsv2rgb, encode_image_base64, equalize_hsv_intensity_histogram
+from imagination.image_processor import allowed_filter_types, decode_base64_image, rgb2hsv, process_with_mask, hsv2rgb, encode_image_base64, equalize_hsv_intensity_histogram
 import numpy as np
 import json
 
@@ -82,23 +82,18 @@ def create_app():
         bts = file.stream.read()
         decoded_image = decode_base64_image(bts)
         hsv_image = rgb2hsv(decoded_image)
-
-        filter_func = median_filter
-        match filter_type:
-            case 'mean':
-                filter_func = mean_filter
-            case 'median':
-                filter_func = median_filter
-
+        
         processed_layer = process_with_mask(
             hsv_image[:, :, 2],
             mask_width,
             mask_height,
             corner_handling_mode,
-            filter_func)
+            filter_type)
+        
+        # If the shape of the processed layer is smaller than the original layer, resize the entire image to the smaller shape
         if processed_layer.shape[1] < hsv_image[:, :, 2].shape[1] or processed_layer.shape[0] < hsv_image[:, :, 2].shape[0]:
-            mask_width_half = np.floor(mask_width/2).astype(int)
-            mask_height_half = np.floor(mask_height/2).astype(int)
+            mask_width_half = mask_width // 2
+            mask_height_half = mask_height // 2
             
             resized_hsv_image = hsv_image[
                 mask_height_half:-mask_height_half, mask_width_half:-mask_width_half, :
@@ -107,6 +102,7 @@ def create_app():
             hsv_image = resized_hsv_image
         else:
             hsv_image[:,:,2] = processed_layer
+
         rgb_image = hsv2rgb(hsv_image)
         encoded_image = encode_image_base64(rgb_image)
         print(rgb_image .shape)

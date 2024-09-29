@@ -1,12 +1,19 @@
+
+import scipy
+import scipy.ndimage
 import base64
 import numpy as np
 import imageio.v3 as iio
 import io
-from typing import Callable
+from numpy.lib.stride_tricks import sliding_window_view
+from typing import Callable, Literal
 from flask import abort
 
-allowed_corner_handling_types = ['fit', 'resize', 'substituteMin', 'substituteMax']
-allowed_filter_types = ['median', 'mean']
+type FilterType = Literal['median', 'mean']
+type CornerHandlingType = Literal['mirror', 'resize', 'substituteMin', 'substituteMax']
+
+allowed_corner_handling_types: CornerHandlingType = ['mirror', 'resize', 'substituteMin', 'substituteMax']
+allowed_filter_types : FilterType = ['median', 'mean']
 
 def decode_base64_image(base64_image : str) -> np.ndarray:
     base64_image = io.BytesIO(base64_image)
@@ -41,22 +48,12 @@ def equalize_hsv_intensity_histogram(hsv_image : np.ndarray) -> np.ndarray:
     new_intensity = np.floor(cdf[brightness_value.astype(int)] * 255).astype(int)
     return new_intensity
 
-def median_filter(
-        mask_area: np.ndarray,
-):
-    return np.median(mask_area).astype(int)
-
-def mean_filter(
-        mask_area: np.ndarray,
-):
-    return np.mean(mask_area).astype(int)
-
 def process_with_mask(
         layer: np.ndarray,
         mask_width: int,
         mask_height: int,
-        corner_handling: str,
-        filter: Callable[[np.ndarray], int]
+        corner_handling: CornerHandlingType,
+        filter_type: FilterType
         ) -> np.ndarray:
     """Process image layer with a mask filter of size M x N
 
@@ -66,11 +63,12 @@ def process_with_mask(
     mask_width : width of the mask (should be 3 or bigger odd integer)
     mask_height : height of the mask (should be 3 or bigger odd integer)
     corner_handling : specifies the way corners should be handled with the filter
-        - 'fit': the filter only uses the pixels that are available in given space (doesn't exceed boundaries)
+        - 'mirror': the layer is padded with mirrored values from the inside of the layer (small impact to the edge pixels)
         - 'resize': the filter only processes pixels where it fits completely (meaning layer will be smaller)
         - 'substituteMin': layer is padded with zeros so that the mask filter can process all original pixels
         - 'substituteMax': layer is padded with the max value of the layer so that the mask filter can process all original pixels
-
+    filter_type: how the mask/filter should calculate the return value for a pixel
+        
     Returns
     -------
     layer : (..., ...) ndarray
@@ -84,54 +82,36 @@ def process_with_mask(
         abort(400,'Layer/image size should be 10x10 or greater')
     if corner_handling not in allowed_corner_handling_types:
         abort(400, 'Corner handling type is not one of the allowed values')
-    shaped_layer = layer
+    filtered_layer = layer.copy()
 
-    mask_width_half = np.floor(mask_width/2).astype(int)
-    mask_height_half = np.floor(mask_height/2).astype(int)
+    mask_width_half = mask_width // 2
+    mask_height_half = mask_height // 2
     
-    match corner_handling:
-        case 'fit':
-            for y in range(0, shaped_layer.shape[0]):
-                for x in range(0, shaped_layer.shape[1]):
-                    y_mask_start = max(y - mask_height_half, 0)
-                    y_mask_end = min(y + mask_height_half + 1, shaped_layer.shape[0])
-                    
-                    x_mask_start = max(x - mask_width_half, 0)
-                    x_mask_end = min(x + mask_width_half + 1, shaped_layer.shape[1])
-        
-                    mask_area = shaped_layer[
-                       y_mask_start : y_mask_end,
-                       x_mask_start : x_mask_end
-                    ]
-                    filtered_layer = filter(mask_area)
-                    layer[y, x] = filtered_layer
-        case 'resize':
-            for y in range(mask_height_half, shaped_layer.shape[0] - mask_height_half):
-                for x in range(mask_width_half, shaped_layer.shape[1] - mask_width_half):
-                    mask_area = shaped_layer[
-                        y-mask_height_half: y+mask_height_half+1,
-                        x-mask_width_half: x+mask_width_half+1,
-                        ]
-                    filtered_layer = filter(mask_area)
-                    layer[y-mask_height_half,x-mask_width_half] = filtered_layer  
-            resized_layer = layer[mask_height_half:-mask_height_half, mask_width_half:-mask_width_half]
-            return resized_layer
-        case 'substituteMin':
-            shaped_layer = np.pad(layer,pad_width=((mask_height_half,mask_height_half), (mask_width_half,mask_width_half)),mode='constant', constant_values=0)
-        case 'substituteMax':
-            maxValue = np.max(layer)
-            shaped_layer = np.pad(layer,pad_width=((mask_height_half,mask_height_half), (mask_width_half,mask_width_half)),mode='constant', constant_values=maxValue)
+    match filter_type:
+        case 'mean':
+            if corner_handling == 'substituteMax':
+                filtered_layer = scipy.ndimage.uniform_filter(layer, (mask_height, mask_width), mode='constant', cval=np.max(layer))
+            elif (corner_handling == 'substituteMin'):
+                filtered_layer = scipy.ndimage.uniform_filter(layer, (mask_height, mask_width), mode='constant', cval=0)
+            elif (corner_handling == 'mirror'):
+                filtered_layer = scipy.ndimage.uniform_filter(layer, (mask_height, mask_width), mode='mirror')
+            elif (corner_handling == 'resize'):
+                filtered = scipy.ndimage.uniform_filter(layer, (mask_height, mask_width), mode='mirror')
+                # Only take the area where the mask could be completely fitted
+                filtered_layer = filtered[mask_height_half:-mask_height_half, mask_width_half:-mask_width_half]
+        case 'median':
+            if corner_handling == 'substituteMax':
+                filtered_layer = scipy.ndimage.median_filter(layer, (mask_height, mask_width), mode='constant', cval=np.max(layer))
+            elif (corner_handling == 'substituteMin'):
+                filtered_layer = scipy.ndimage.median_filter(layer, (mask_height, mask_width), mode='constant', cval=0)
+            elif (corner_handling == 'mirror'):
+                filtered_layer = scipy.ndimage.median_filter(layer, (mask_height, mask_width), mode='mirror')
+            elif (corner_handling == 'resize'):
+                filtered = scipy.ndimage.median_filter(layer, (mask_height, mask_width), mode='mirror')
+                # Only take the area where the mask could be completely fitted
+                filtered_layer = filtered[mask_height_half:-mask_height_half, mask_width_half:-mask_width_half]
+    return filtered_layer
     
-    if corner_handling == 'substituteMax' or corner_handling == 'substituteMin':
-        for y in range(mask_height_half, shaped_layer.shape[0] - mask_height_half):
-            for x in range(mask_width_half, shaped_layer.shape[1] - mask_width_half):
-                mask_area = shaped_layer[
-                    y-mask_height_half: y+mask_height_half+1,
-                    x-mask_width_half: x+mask_width_half+1,
-                ]
-                filtered_layer = filter(mask_area)
-                layer[y-mask_height_half,x-mask_width_half] = filtered_layer  
-    return layer
 
 def _prepare_colorarray(arr : np.ndarray, channel_axis=-1):
     """NOTE: This is a slightly modified version of _prepare_colorarray from scikit-image (https://github.com/scikit-image/scikit-image/blob/v0.23.1/skimage/color/colorconv.py)
