@@ -32,3 +32,20 @@ The frontend for this app can be seen at https://github.com/topiaspeiponen/imagi
 
 2. Run the Flask app and NGINX server with Docker Compose
 ```docker compose up -d```
+
+**Build separate containers**
+In case you want to build and run the Flask app and Nginx proxy separately, do the following:
+
+1. Build the containers (in their respective directories)
+
+```docker build -f Dockerfile -t flask-app-image .```
+```docker build -f Dockerfile -t nginx-proxy-image .```
+
+2. Create a [Docker network](https://docs.docker.com/engine/network/)
+
+```docker network create my-network ```
+
+3. Run the containers (Flask in port 8000 and Nginx proxy in port 8080) using the network
+
+```docker run -d --network=my-network -p 8000:8000 --name flask-app flask-app-image```
+```docker run -d --network=my-network --env FLASK_SERVER_ADDR=http://flask-app:8000 -p 8080:8080 --name nginx-proxy nginx-proxy-image```
